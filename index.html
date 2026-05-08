@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Market Radar / Google Suggest取得版</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>Market Radar</h1>
+      <p>Google Suggest取得版 / 市場摩擦ランキング・ヒートマップ・関係マップ・構造マップ</p>
+    </div>
+    <div class="header-actions">
+      <button id="startBtn" class="primary">取得開始</button>
+      <button id="testBtn">テスト取得</button>
+      <button id="stopBtn" disabled>停止</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel grid-2">
+      <div>
+        <div class="row wrap">
+          <label>seedプリセット</label>
+          <select id="presetSelect"></select>
+          <button id="loadPreset">読込</button>
+          <input id="presetName" placeholder="保存名">
+          <button id="savePreset">保存</button>
+          <button id="deletePreset">削除</button>
+        </div>
+        <textarea id="seedText" rows="10" placeholder="seedを1行ずつ入力"></textarea>
+      </div>
+
+      <div>
+        <div class="row wrap">
+          <label>取得設定</label>
+          <label class="inline">待機秒 <input id="waitSec" type="number" value="1" min="0" step="0.2"></label>
+          <label class="inline"><input id="useCache" type="checkbox" checked> キャッシュ使用</label>
+        </div>
+        <div class="row wrap">
+          <label>深掘り</label>
+          <select id="depthMode">
+            <option value="none">一段目のみ</option>
+            <option value="top3">一段目上位3件を二段掘り</option>
+            <option value="top5">一段目上位5件を二段掘り</option>
+            <option value="all" selected>一段目全件を二段掘り</option>
+          </select>
+          <label>重み</label>
+          <select id="weightMode">
+            <option value="sqrt" selected>sqrt</option>
+            <option value="linear">linear</option>
+            <option value="inverse">inverse</option>
+          </select>
+          <label>一致</label>
+          <select id="matchMode">
+            <option value="smart" selected>smart</option>
+            <option value="strict">strict</option>
+            <option value="substring">substring</option>
+          </select>
+        </div>
+        <div class="row wrap">
+          <label>WebプロキシURL</label>
+          <input id="proxyUrl" class="wide" placeholder="未入力なら直接Google Suggestへfetch。CORSで止まる場合はWorker URLを入力">
+        </div>
+        <div class="row wrap">
+          <label>表示件数</label>
+          <input id="topN" type="number" value="120" min="10" step="10">
+          <label>商品化</label>
+          <select id="productFilter">
+            <option value="all" selected>すべて</option>
+            <option value="テンプレ">テンプレ</option>
+            <option value="代行">代行</option>
+            <option value="比較表">比較表</option>
+            <option value="自動化">自動化</option>
+            <option value="記事/調査">記事/調査</option>
+          </select>
+          <button id="saveSettings">設定保存</button>
+          <button id="resetSettings">設定リセット</button>
+          <button id="clearCacheBtn">キャッシュ削除</button>
+        </div>
+        <div id="weightPanel" class="weight-panel"></div>
+      </div>
+    </section>
+
+    <section class="panel grid-3">
+      <div>
+        <div class="row wrap">
+          <label>フィルタープリセット</label>
+          <select id="filterPresetSelect"></select>
+          <button id="loadFilterPreset">読込</button>
+          <input id="filterPresetName" placeholder="保存名">
+          <button id="saveFilterPreset">保存</button>
+          <button id="deleteFilterPreset">削除</button>
+        </div>
+        <label>完全除外語</label>
+        <textarea id="hardExcludeWords" rows="5"></textarea>
+      </div>
+      <div>
+        <label>減点語</label>
+        <textarea id="penaltyWords" rows="8"></textarea>
+      </div>
+      <div>
+        <label>優先加点語</label>
+        <textarea id="priorityWords" rows="8"></textarea>
+        <label>正規化ルール <span class="muted">例：確定申告=確申,青色申告</span></label>
+        <textarea id="normalizationRules" rows="4"></textarea>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div><span id="statSeeds">0</span><small>seed</small></div>
+      <div><span id="statQueries">0</span><small>query</small></div>
+      <div><span id="statRows">0</span><small>raw</small></div>
+      <div><span id="statCo">0</span><small>対象語</small></div>
+      <div><span id="statCross">0</span><small>最大横断</small></div>
+      <div><span id="statFail">0</span><small>失敗</small></div>
+    </section>
+
+    <section class="downloads row wrap">
+      <button id="downloadMarket" disabled>市場CSV</button>
+      <button id="downloadSeed" disabled>seed CSV</button>
+      <button id="downloadRaw" disabled>raw CSV</button>
+      <button id="downloadBriefs" disabled>brief CSV</button>
+      <button id="downloadReddit" disabled>Reddit CSV</button>
+    </section>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="market">市場摩擦</button>
+      <button class="tab" data-tab="treemap">ヒートマップ</button>
+      <button class="tab" data-tab="relation">関係マップ</button>
+      <button class="tab" data-tab="structure">構造マップ</button>
+      <button class="tab" data-tab="seed">seed別</button>
+      <button class="tab" data-tab="cross">横断</button>
+      <button class="tab" data-tab="next">次seed</button>
+      <button class="tab" data-tab="briefs">商品ブリーフ</button>
+      <button class="tab" data-tab="reddit">Reddit</button>
+      <button class="tab" data-tab="raw">Raw</button>
+    </nav>
+
+    <section id="marketView" class="view"></section>
+
+    <section id="treemapView" class="view hidden">
+      <div class="map-toolbar row wrap">
+        <label>サイズ</label>
+        <select id="treemapSizeMetric">
+          <option value="score" selected>市場摩擦</option>
+          <option value="rank_weight">順位重み</option>
+          <option value="cross">横断seed</option>
+        </select>
+        <label>色分け</label>
+        <select id="treemapColorMetric">
+          <option value="score" selected>市場摩擦</option>
+          <option value="domain">領域</option>
+          <option value="product">商品化</option>
+          <option value="risk">減点</option>
+        </select>
+        <label>表示件数</label>
+        <input id="treemapTopN" type="number" value="160" min="10" step="10">
+        <button id="renderTreemapBtn">再描画</button>
+      </div>
+      <div id="treemap" class="treemap"></div>
+      <div id="treemapTooltip" class="tooltip"></div>
+    </section>
+
+    <section id="relationView" class="view hidden">
+      <div class="map-toolbar row wrap">
+        <label>seed</label>
+        <select id="relationSeedFilter"><option value="all">すべて</option></select>
+        <label>表示対象語</label>
+        <input id="relationTopN" type="number" value="120" min="10" step="10">
+        <label>最小重み</label>
+        <input id="relationMinWeight" type="number" value="0" min="0" step="0.1">
+        <button id="renderRelationBtn">再描画</button>
+      </div>
+      <div id="relationMap" class="svg-map dark"></div>
+      <div id="relationTooltip" class="tooltip"></div>
+    </section>
+
+    <section id="structureView" class="view hidden">
+      <div class="map-toolbar row wrap">
+        <label>中心テーマ</label>
+        <input id="structureThemeName" value="検索セット">
+        <label>表示対象語</label>
+        <input id="structureTopN" type="number" value="80" min="10" step="10">
+        <label>色分け</label>
+        <select id="structureColorMode">
+          <option value="seed" selected>seed別</option>
+          <option value="domain">領域</option>
+          <option value="product">商品化</option>
+          <option value="score">スコア</option>
+        </select>
+        <label>線の表示</label>
+        <select id="structureEdgeMode">
+          <option value="strong" selected>強い線のみ</option>
+          <option value="all">すべて</option>
+        </select>
+        <label>表示モード</label>
+        <select id="structureViewMode">
+          <option value="overview" selected>俯瞰</option>
+          <option value="detail">詳細</option>
+        </select>
+        <label>ラベル</label>
+        <select id="structureLabelMode">
+          <option value="important" selected>重要のみ</option>
+          <option value="all">全部</option>
+          <option value="off">なし</option>
+        </select>
+        <button id="renderStructureBtn">再描画</button>
+        <button id="downloadStructureSvgBtn">SVG保存</button>
+      </div>
+      <p class="map-note">中央 = 検索セット。大きい丸 = seed。小さいノード = 抽出対象語。seedごとの領域に対象語を散らし、中央には横断語だけを置きます。</p>
+      <div id="structureMap" class="svg-map light"></div>
+      <div id="structureTooltip" class="tooltip"></div>
+    </section>
+
+    <section id="seedView" class="view hidden"></section>
+    <section id="crossView" class="view hidden"></section>
+    <section id="nextView" class="view hidden"></section>
+    <section id="briefsView" class="view hidden"></section>
+    <section id="redditView" class="view hidden"></section>
+    <section id="rawView" class="view hidden"></section>
+
+    <section class="panel">
+      <h2>ログ</h2>
+      <pre id="status"></pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
